@@ -1,56 +1,41 @@
-# Welcome to your Expo app 👋
+# Finance Familia
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi pencatatan keuangan pribadi offline-first berbasis Expo Router. Tidak ada akun, login, backend, database online, atau API eksternal. Transaksi, hutang, saham, kategori, dan pengaturan disimpan di SQLite lokal.
 
-## Get started
+## Fitur
 
-1. Install dependencies
+- Dashboard saldo, ringkasan bulanan, dan grafik lokal.
+- CRUD transaksi pemasukan/pengeluaran, kategori, pencarian, serta filter.
+- Pengelolaan hutang/piutang dan pembayaran sebagian.
+- Portofolio saham manual dengan estimasi nilai dan profit.
+- Backup/restore JSON melalui pemilih file dan native share sheet.
+- Sinkronisasi pasangan dengan bertukar file; konflik ditampilkan agar pengguna memilih salinan.
+- Tema sistem/terang/gelap dan App Lock PIN dengan hash di SecureStore.
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Jalankan untuk pengembangan
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Jalankan di perangkat Android dengan Expo Go untuk uji coba, atau buat APK mandiri melalui Expo Application Services (EAS). Modul SQLite, file sharing, dan SecureStore dapat digunakan dalam build Expo yang didukung; perubahan dependency native memerlukan build baru.
 
-### Other setup steps
+## Validasi
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm run lint
+npm run typecheck
+npx expo-doctor
+```
 
-## Learn more
+## Build APK Android
 
-To learn more about developing your project with Expo, look at the following resources:
+Build `preview` dikonfigurasi untuk menghasilkan APK yang dapat diunduh dan dipasang langsung. Langkah lengkap, termasuk konfigurasi EAS dan instalasi APK di perangkat Android, ada di [PANDUAN_BUILD_ANDROID.md](./PANDUAN_BUILD_ANDROID.md).
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Catatan privasi dan sinkronisasi
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Data utama tersimpan di SQLite pada perangkat.
+- Ekspor JSON menggunakan file lokal dan menu berbagi Android; WhatsApp hanya menjadi media pengiriman file.
+- Sinkronisasi bukan real-time dan tidak memakai server. Impor menggabungkan record berdasarkan ID, menyimpan tombstone penghapusan, dan meminta pilihan untuk konflik.
+- Simpan salinan backup di lokasi aman. Menghapus aplikasi dapat menghapus database lokal.
