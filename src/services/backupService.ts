@@ -1,6 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
-import { File, Paths } from "expo-file-system";
-import * as Sharing from "expo-sharing";
+import { File } from "expo-file-system";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import { getDeviceId } from "@/database/db";
@@ -8,6 +7,7 @@ import { listCategories } from "@/database/repositories/categoryRepository";
 import { listDebts } from "@/database/repositories/debtRepository";
 import { listStocks } from "@/database/repositories/stockRepository";
 import { listTransactions } from "@/database/repositories/transactionRepository";
+import { parseCsv, shareCsvFile, stringifyCsv } from "@/services/csvService";
 import type {
   BackupFile,
   Category,
@@ -18,6 +18,32 @@ import type {
 
 const MAX_BACKUP_SIZE = 10 * 1024 * 1024;
 const ENTITY_TYPES = ["transactions", "debts", "stocks", "categories"] as const;
+const CSV_COLUMNS = [
+  "record_type",
+  "source_device_id",
+  "exported_at",
+  "id",
+  "device_id",
+  "type",
+  "description",
+  "amount",
+  "category",
+  "date",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+  "sync_status",
+  "person_name",
+  "paid_amount",
+  "due_date",
+  "status",
+  "symbol",
+  "name",
+  "lots",
+  "buy_price",
+  "current_price",
+  "buy_date",
+] as const;
 type EntityType = (typeof ENTITY_TYPES)[number];
 type BackupEntity = Transaction | Debt | Stock | Category;
 type ResolutionMap = Record<string, "local" | "remote">;
@@ -66,19 +92,9 @@ export async function createBackup(
 }
 
 export async function shareBackup(database: SQLiteDatabase): Promise<void> {
-  if (!(await Sharing.isAvailableAsync())) {
-    throw new Error("Fitur berbagi tidak tersedia di perangkat ini.");
-  }
   const backup = await createBackup(database);
-  const fileName = `personal_finance_sync_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-  const file = new File(Paths.cache, fileName);
-  file.create({ overwrite: true });
-  await file.write(JSON.stringify(backup, null, 2));
-  await Sharing.shareAsync(file.uri, {
-    mimeType: "application/json",
-    dialogTitle: "Bagikan backup ke pasangan",
-    UTI: "public.json",
-  });
+  const fileName = `finance_familia_sync_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+  await shareCsvFile(fileName, stringifyCsv(backupToCsvRows(backup)), "Bagikan CSV ke pasangan");
   await database.withTransactionAsync(async () => {
     for (const table of ["transactions", "debts", "stocks"] as const) {
       await database.runAsync(
@@ -97,7 +113,13 @@ export async function shareBackup(database: SQLiteDatabase): Promise<void> {
 
 export async function pickBackupFile(): Promise<BackupFile | null> {
   const result = await DocumentPicker.getDocumentAsync({
-    type: ["application/json", "text/json", "application/octet-stream"],
+    type: [
+      "text/csv",
+      "text/comma-separated-values",
+      "application/vnd.ms-excel",
+      "text/plain",
+      "application/octet-stream",
+    ],
     copyToCacheDirectory: true,
     multiple: false,
   });
@@ -106,63 +128,206 @@ export async function pickBackupFile(): Promise<BackupFile | null> {
   if (file.size > MAX_BACKUP_SIZE) {
     throw new Error("File backup terlalu besar. Batas ukuran adalah 10 MB.");
   }
-  return parseBackup(await file.text());
+  return parseBackupCsv(await file.text());
 }
 
-export function parseBackup(text: string): BackupFile {
+export function parseBackupCsv(text: string): BackupFile {
   if (text.length > MAX_BACKUP_SIZE) {
     throw new Error("File backup terlalu besar. Batas ukuran adalah 10 MB.");
   }
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new Error("File bukan JSON yang valid.");
+  const rows = parseCsv(text);
+  const [header, ...dataRows] = rows;
+  if (!header || !dataRows.length) {
+    throw new Error("File CSV kosong atau tidak memiliki data.");
   }
+  const columns = header.map((column) => column.trim());
   if (
-    !isRecord(value) ||
-    value.version !== 1 ||
-    typeof value.deviceId !== "string"
+    columns.length !== CSV_COLUMNS.length ||
+    CSV_COLUMNS.some((column, index) => columns[index] !== column)
   ) {
-    throw new Error(
-      "Format backup tidak dikenali. Pastikan memilih file dari Finance Familia.",
-    );
+    throw new Error("Format CSV tidak dikenali. Pilih file ekspor Finance Familia.");
   }
+  const records = dataRows.map((values) => {
+    if (values.length !== columns.length) {
+      throw new Error("Jumlah kolom pada file CSV tidak konsisten.");
+    }
+    return Object.fromEntries(columns.map((column, index) => [column, values[index]]));
+  });
+  const sourceIds = new Set(records.map((record) => record.source_device_id));
+  const firstRecord = records[0];
   if (
-    !Array.isArray(value.transactions) ||
-    !Array.isArray(value.debts) ||
-    !Array.isArray(value.stocks) ||
-    !Array.isArray(value.categories)
+    sourceIds.size !== 1 ||
+    typeof firstRecord?.source_device_id !== "string" ||
+    firstRecord.source_device_id.length === 0
   ) {
-    throw new Error("File backup tidak memiliki data yang lengkap.");
+    throw new Error("File CSV harus berasal dari satu perangkat Finance Familia.");
+  }
+  const exportedAt = firstRecord.exported_at ?? "";
+  if (records.some((record) => record.exported_at !== exportedAt)) {
+    throw new Error("Metadata pada file CSV tidak konsisten.");
   }
   const backup: BackupFile = {
     version: 1,
-    deviceId: value.deviceId,
-    exportedAt: typeof value.exportedAt === "string" ? value.exportedAt : "",
-    transactions: value.transactions as Transaction[],
-    debts: value.debts as Debt[],
-    stocks: value.stocks as Stock[],
-    categories: value.categories as Category[],
+    deviceId: firstRecord.source_device_id,
+    exportedAt,
+    transactions: [],
+    debts: [],
+    stocks: [],
+    categories: [],
   };
+  for (const record of records) {
+    switch (record.record_type) {
+      case "metadata":
+        break;
+      case "transaction":
+        {
+          const transaction = {
+            id: record.id,
+            device_id: record.device_id,
+            type: record.type,
+            description: record.description,
+            amount: parseCsvNumber(record.amount, "jumlah transaksi"),
+            category: record.category,
+            date: record.date,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            deleted_at: csvNullable(record.deleted_at),
+            sync_status: record.sync_status,
+          };
+          if (!isTransaction(transaction)) {
+            throw new Error("Ada data transaksi pada file CSV yang tidak valid.");
+          }
+          backup.transactions.push(transaction);
+        }
+        break;
+      case "debt":
+        {
+          const debt = {
+            id: record.id,
+            device_id: record.device_id,
+            person_name: record.person_name,
+            description: record.description,
+            type: record.type,
+            amount: parseCsvNumber(record.amount, "jumlah hutang"),
+            paid_amount: parseCsvNumber(record.paid_amount, "jumlah terbayar"),
+            date: record.date,
+            due_date: csvNullable(record.due_date),
+            status: record.status,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            deleted_at: csvNullable(record.deleted_at),
+            sync_status: record.sync_status,
+          };
+          if (!isDebt(debt)) {
+            throw new Error("Ada data hutang pada file CSV yang tidak valid.");
+          }
+          backup.debts.push(debt);
+        }
+        break;
+      case "stock":
+        {
+          const stock = {
+            id: record.id,
+            device_id: record.device_id,
+            symbol: record.symbol,
+            name: record.name,
+            lots: parseCsvNumber(record.lots, "jumlah lot"),
+            buy_price: parseCsvNumber(record.buy_price, "harga beli"),
+            current_price: parseCsvNumber(record.current_price, "harga pasar"),
+            buy_date: record.buy_date,
+            description: record.description,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            deleted_at: csvNullable(record.deleted_at),
+            sync_status: record.sync_status,
+          };
+          if (!isStock(stock)) {
+            throw new Error("Ada data saham pada file CSV yang tidak valid.");
+          }
+          backup.stocks.push(stock);
+        }
+        break;
+      case "category":
+        {
+          const category = {
+            id: record.id,
+            name: record.name,
+            type: record.type,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+          };
+          if (!isCategory(category)) {
+            throw new Error("Ada data kategori pada file CSV yang tidak valid.");
+          }
+          backup.categories.push(category);
+        }
+        break;
+      default:
+        throw new Error("File CSV berisi jenis data yang tidak dikenal.");
+    }
+  }
   if (
     !backup.transactions.every(isTransaction) ||
     !backup.debts.every(isDebt) ||
     !backup.stocks.every(isStock) ||
     !backup.categories.every(isCategory)
   ) {
-    throw new Error("Ada data di file backup yang tidak valid.");
+    throw new Error("Ada data di file CSV yang tidak valid.");
   }
   const ids = new Set<string>();
   for (const type of ENTITY_TYPES) {
     for (const record of backup[type]) {
       const key = `${type}:${record.id}`;
       if (ids.has(key))
-        throw new Error("File backup berisi ID data yang ganda.");
+        throw new Error("File CSV berisi ID data yang ganda.");
       ids.add(key);
     }
   }
   return backup;
+}
+
+function backupToCsvRows(backup: BackupFile): unknown[][] {
+  const rows: unknown[][] = [[...CSV_COLUMNS]];
+  rows.push(
+    CSV_COLUMNS.map((column) => {
+      if (column === "record_type") return "metadata";
+      if (column === "source_device_id") return backup.deviceId;
+      if (column === "exported_at") return backup.exportedAt;
+      return "";
+    }),
+  );
+  const addRows = <T extends object>(
+    recordType: string,
+    records: readonly T[],
+  ) => {
+    for (const record of records) {
+      rows.push(
+        CSV_COLUMNS.map((column) => {
+          if (column === "record_type") return recordType;
+          if (column === "source_device_id") return backup.deviceId;
+          if (column === "exported_at") return backup.exportedAt;
+          return Reflect.get(record, column) ?? "";
+        }),
+      );
+    }
+  };
+  addRows("transaction", backup.transactions);
+  addRows("debt", backup.debts);
+  addRows("stock", backup.stocks);
+  addRows("category", backup.categories);
+  return rows;
+}
+
+function parseCsvNumber(value: string, label: string): number {
+  const number = Number(value);
+  if (!value || !Number.isFinite(number)) {
+    throw new Error(`Kolom ${label} pada file CSV tidak valid.`);
+  }
+  return number;
+}
+
+function csvNullable(value: string): string | null {
+  return value === "" ? null : value;
 }
 
 export async function previewMerge(

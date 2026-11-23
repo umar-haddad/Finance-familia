@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Alert, Linking, Share, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { useNetworkState } from "expo-network";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import {
@@ -16,14 +17,17 @@ import { getDatabase, getSetting, setSetting } from "@/database/db";
 import { useAppContext } from "@/providers/app-provider";
 import { showMessage } from "@/utils/confirm";
 import { formatDate } from "@/utils/date";
+import { getNetworkLabel } from "@/utils/network";
 
 export default function PartnerScreen() {
   const { colors, deviceId } = useAppContext();
+  const networkState = useNetworkState();
   const [database, setDatabase] = useState<SQLiteDatabase | null>(null);
   const [partnerName, setPartnerName] = useState("");
   const [phone, setPhone] = useState("");
   const [verifiedPhone, setVerifiedPhone] = useState("");
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -36,8 +40,11 @@ export default function PartnerScreen() {
           getSetting("partner_name"),
           getSetting("partner_phone"),
           getSetting("partner_phone_verified"),
-          database.getFirstAsync<{ last_sync_at: string | null }>(
-            "SELECT last_sync_at FROM sync_metadata WHERE id = ?",
+          database.getFirstAsync<{
+            last_sync_at: string | null;
+            partner_id: string | null;
+          }>(
+            "SELECT last_sync_at, partner_id FROM sync_metadata WHERE id = ?",
             "partner-sync",
           ),
           database.getFirstAsync<{ count: number }>(
@@ -51,6 +58,7 @@ export default function PartnerScreen() {
       setPhone(savedPhone ?? "");
       setVerifiedPhone(savedVerifiedPhone ?? "");
       setLastSync(metadata?.last_sync_at ?? null);
+      setPartnerId(metadata?.partner_id ?? null);
       setPendingCount(pending?.count ?? 0);
     } catch (error) {
       Alert.alert(
@@ -101,7 +109,7 @@ export default function PartnerScreen() {
       return;
     }
     const inviteCode = deviceId.replace(/-/g, "").slice(0, 8).toUpperCase();
-    const message = `Hai${partnerName ? ` ${partnerName}` : ""} ❤️\n\nYuk gunakan Finance Familia bersama untuk memantau keuangan kita.\n\nAplikasi ini tidak memakai login atau server. Setelah memasang aplikasi, kita bertukar file JSON melalui menu Sinkronisasi.\n\nKode perangkat: ${inviteCode}`;
+    const message = `Hai${partnerName ? ` ${partnerName}` : ""} ❤️\n\nYuk gunakan Finance Familia bersama untuk memantau keuangan kita.\n\nAplikasi ini tidak memakai login atau server. Setelah memasang aplikasi, kita bertukar file CSV melalui menu Sinkronisasi dan mencocokkan ID perangkat.\n\nKode perangkat: ${inviteCode}`;
     const digits = phone.replace(/\D/g, "");
     try {
       if (digits.length >= 8) {
@@ -130,13 +138,19 @@ export default function PartnerScreen() {
           <Text style={styles.heart}>♡</Text>
         </View>
         <Text style={styles.statusTitle}>
-          {partnerName && verifiedPhone === phone.trim()
-            ? `Nomor ${partnerName} dikonfirmasi manual`
-            : "Belum terhubung"}
+          {getNetworkLabel(networkState.isConnected, networkState.type)}
         </Text>
         <Text style={styles.statusText}>
-          Tidak ada koneksi langsung. Tukar file backup melalui WhatsApp atau
-          aplikasi berbagi lain.
+          {networkState.isInternetReachable === false
+            ? "Jaringan terdeteksi, tetapi akses internet belum tersedia. "
+            : ""}
+          Status ini menunjukkan jaringan perangkat, bukan koneksi langsung ke
+          pasangan. Sinkronisasi memakai file CSV dan ID perangkat.
+        </Text>
+        <Text style={styles.partnerId}>
+          {partnerId
+            ? `ID pasangan cocok: ${partnerId.slice(0, 8).toUpperCase()}`
+            : "Belum ada ID pasangan yang dicocokkan"}
         </Text>
       </View>
       <Card>
@@ -203,8 +217,9 @@ export default function PartnerScreen() {
         <BackupManager database={database} onComplete={loadData} mode="sync" />
       ) : null}
       <Text style={[styles.footnote, { color: colors.muted }]}>
-        File mencakup transaksi, hutang, saham, kategori, dan penghapusan. Data
-        lokal tidak pernah diganti seluruhnya.
+        File CSV mencakup transaksi, hutang, saham, kategori, dan penghapusan.
+        ID perangkat dipakai untuk mencocokkan sumber file; data lokal tidak
+        pernah diganti seluruhnya.
       </Text>
     </AppShell>
   );
@@ -228,6 +243,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   statusText: { color: "#E1F7E9", fontSize: 12, lineHeight: 18, marginTop: 5 },
+  partnerId: { color: "#FFFFFF", fontSize: 11, fontWeight: "700", marginTop: 9 },
   buttonSpacing: { marginBottom: 9 },
   code: { textAlign: "center", marginTop: 12, fontSize: 10 },
   syncHeader: {
@@ -244,3 +260,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
 });
+
+

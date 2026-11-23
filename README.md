@@ -8,8 +8,10 @@ Aplikasi pencatatan keuangan pribadi offline-first berbasis Expo Router. Tidak a
 - CRUD transaksi pemasukan/pengeluaran, kategori, pencarian, serta filter.
 - Pengelolaan hutang/piutang dan pembayaran sebagian.
 - Portofolio saham manual dengan estimasi nilai dan profit.
-- Backup/restore JSON melalui pemilih file dan native share sheet.
+- Backup/restore CSV yang dapat dibuka di aplikasi spreadsheet melalui pemilih file dan native share sheet.
 - Sinkronisasi pasangan dengan bertukar file; konflik ditampilkan agar pengguna memilih salinan.
+- Status Wi-Fi/data ditampilkan terpisah dari status pasangan; sinkronisasi pasangan tetap melalui pertukaran file CSV berdasarkan ID perangkat.
+- Ekspor rekap pemasukan/pengeluaran bulanan untuk 6 bulan atau 1 tahun.
 - Tema sistem/terang/gelap dan App Lock PIN dengan hash di SecureStore.
 
 ## Jalankan untuk pengembangan
@@ -36,6 +38,6 @@ Build `preview` dikonfigurasi untuk menghasilkan APK yang dapat diunduh dan dipa
 ## Catatan privasi dan sinkronisasi
 
 - Data utama tersimpan di SQLite pada perangkat.
-- Ekspor JSON menggunakan file lokal dan menu berbagi Android; WhatsApp hanya menjadi media pengiriman file.
-- Sinkronisasi bukan real-time dan tidak memakai server. Impor menggabungkan record berdasarkan ID, menyimpan tombstone penghapusan, dan meminta pilihan untuk konflik.
+- Ekspor CSV menggunakan file lokal dan menu berbagi Android; WhatsApp hanya menjadi media pengiriman file.
+- Sinkronisasi bukan real-time dan tidak memakai server. Status online menunjukkan koneksi jaringan perangkat, bukan koneksi langsung pasangan. Impor CSV mencocokkan sumber lewat ID perangkat, menggabungkan record, menyimpan tombstone penghapusan, dan meminta pilihan untuk konflik.
 - Simpan salinan backup di lokasi aman. Menghapus aplikasi dapat menghapus database lokal.

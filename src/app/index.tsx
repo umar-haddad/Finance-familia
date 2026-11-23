@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
+import { useNetworkState } from "expo-network";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -13,6 +14,7 @@ import {
 import { IncomeExpenseChart } from "@/components/finance-charts";
 import { TransactionForm } from "@/components/transaction-form";
 import { TransactionRow } from "@/components/transaction-row";
+import { shareTransactionSummaryCsv } from "@/services/reportService";
 import { getDatabase } from "@/database/db";
 import { listCategories } from "@/database/repositories/categoryRepository";
 import { listDebts } from "@/database/repositories/debtRepository";
@@ -33,9 +35,11 @@ import type {
 import { confirmDestructiveAction, showMessage } from "@/utils/confirm";
 import { formatCurrency } from "@/utils/currency";
 import { formatDate, formatMonth, getMonthRange } from "@/utils/date";
+import { getNetworkLabel } from "@/utils/network";
 
 export default function DashboardScreen() {
   const { colors, currency, deviceId, name, updateProfile } = useAppContext();
+  const networkState = useNetworkState();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
@@ -46,6 +50,8 @@ export default function DashboardScreen() {
   const [initialType, setInitialType] = useState<TransactionType>("expense");
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [profileName, setProfileName] = useState(name);
+  const [reportMonths, setReportMonths] = useState<6 | 12>(6);
+  const [exportingReport, setExportingReport] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -144,6 +150,20 @@ export default function DashboardScreen() {
     );
   };
 
+  const exportReport = async () => {
+    setExportingReport(true);
+    try {
+      await shareTransactionSummaryCsv(transactions, reportMonths);
+    } catch (error) {
+      Alert.alert(
+        "Rekap belum dapat diekspor",
+        error instanceof Error ? error.message : "Coba lagi.",
+      );
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   return (
     <AppShell title="Dashboard">
       {!name ? (
@@ -183,7 +203,10 @@ export default function DashboardScreen() {
         <Text style={styles.balanceValue}>
           {formatCurrency(balance, currency)}
         </Text>
-        <Text style={styles.balanceFootnote}>Ringkasan keuangan · offline</Text>
+        <Text style={styles.balanceFootnote}>
+          Ringkasan lokal ·{" "}
+          {getNetworkLabel(networkState.isConnected, networkState.type)}
+        </Text>
         <View style={styles.monthPill}>
           <Text style={styles.monthText}>{formatMonth()}</Text>
         </View>
@@ -235,6 +258,37 @@ export default function DashboardScreen() {
       ) : null}
 
       <IncomeExpenseChart transactions={transactions} />
+
+      <Card>
+        <SectionTitle>Ekspor rekap keuangan</SectionTitle>
+        <Text style={[styles.helper, { color: colors.muted }]}>
+          Bagikan ringkasan pemasukan dan pengeluaran per bulan dalam format
+          CSV.
+        </Text>
+        <View style={styles.reportPeriodRow}>
+          <View style={styles.reportPeriodButton}>
+            <ActionButton
+              title="6 bulan"
+              compact
+              variant={reportMonths === 6 ? "primary" : "secondary"}
+              onPress={() => setReportMonths(6)}
+            />
+          </View>
+          <View style={styles.reportPeriodButton}>
+            <ActionButton
+              title="1 tahun"
+              compact
+              variant={reportMonths === 12 ? "primary" : "secondary"}
+              onPress={() => setReportMonths(12)}
+            />
+          </View>
+        </View>
+        <ActionButton
+          title={exportingReport ? "Menyiapkan CSV..." : "Bagikan rekap CSV"}
+          onPress={() => void exportReport()}
+          disabled={exportingReport}
+        />
+      </Card>
 
       <Card>
         <View style={styles.sectionHeader}>
@@ -389,6 +443,8 @@ function QuickAction({
 
 const styles = StyleSheet.create({
   helper: { fontSize: 13, lineHeight: 20, marginTop: -5, marginBottom: 12 },
+  reportPeriodRow: { flexDirection: "row", gap: 9, marginBottom: 10 },
+  reportPeriodButton: { flex: 1 },
   balanceCard: {
     borderRadius: 25,
     padding: 22,

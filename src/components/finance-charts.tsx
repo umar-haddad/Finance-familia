@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Card, SectionTitle } from '@/components/app-shell';
@@ -11,6 +12,7 @@ function monthLabel(year: number, month: number): string {
 
 export function IncomeExpenseChart({ transactions }: { transactions: Transaction[] }) {
   const { colors, currency } = useAppContext();
+  const [chartWidth, setChartWidth] = useState(0);
   const today = new Date();
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date(today.getFullYear(), today.getMonth() - 5 + index, 1);
@@ -23,6 +25,18 @@ export function IncomeExpenseChart({ transactions }: { transactions: Transaction
     };
   });
   const maxAmount = Math.max(1, ...months.flatMap((month) => [month.income, month.expense]));
+  const plotHeight = 108;
+  const getPoints = (key: 'income' | 'expense') =>
+    months.map((month, index) => ({
+      x: chartWidth <= 0 ? 0 : 6 + (chartWidth - 12) * (index / (months.length - 1)),
+      y: 7 + (plotHeight - 16) * (1 - month[key] / maxAmount),
+    }));
+  const incomePoints = getPoints('income');
+  const expensePoints = getPoints('expense');
+  const segments = [
+    { points: incomePoints, color: colors.positive, key: 'income' },
+    { points: expensePoints, color: colors.negative, key: 'expense' },
+  ];
 
   return (
     <Card>
@@ -40,28 +54,71 @@ export function IncomeExpenseChart({ transactions }: { transactions: Transaction
           <Text style={[styles.legendText, { color: colors.muted }]}>Keluar</Text>
         </View>
       </View>
-      <View style={styles.chart}>
+      <View
+        style={styles.chartPlot}
+        onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
+      >
+        {[0, 1, 2, 3].map((line) => (
+          <View
+            key={line}
+            style={[
+              styles.chartGridLine,
+              { top: (plotHeight - 1) * (line / 3), backgroundColor: colors.border },
+            ]}
+          />
+        ))}
+        {chartWidth > 0
+          ? segments.flatMap(({ points, color, key }) =>
+              points.slice(0, -1).map((point, index) => {
+                const next = points[index + 1];
+                const dx = next.x - point.x;
+                const dy = next.y - point.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                const angle = `${Math.atan2(dy, dx)}rad`;
+                return (
+                  <View
+                    key={`${key}-line-${index}`}
+                    style={[
+                      styles.chartSegment,
+                      {
+                        width: length,
+                        left: (point.x + next.x - length) / 2,
+                        top: (point.y + next.y) / 2 - 1,
+                        backgroundColor: color,
+                        transform: [{ rotate: angle }],
+                      },
+                    ]}
+                  />
+                );
+              }),
+            )
+          : null}
+        {chartWidth > 0
+          ? segments.flatMap(({ points, color, key }) =>
+              points.map((point, index) => (
+                <View
+                  key={`${key}-dot-${index}`}
+                  style={[
+                    styles.chartDot,
+                    {
+                      left: point.x - 4,
+                      top: point.y - 4,
+                      backgroundColor: color,
+                      borderColor: colors.surface,
+                    },
+                  ]}
+                />
+              )),
+            )
+          : null}
+      </View>
+      <View style={styles.chartLabels}>
         {months.map((month) => (
           <View key={month.label + month.income} style={styles.monthColumn}>
-            <View style={styles.bars}>
-              <View
-                style={[
-                  styles.bar,
-                  { height: `${Math.max(3, (month.income / maxAmount) * 100)}%`, backgroundColor: colors.positive },
-                ]}
-              />
-              <View
-                style={[
-                  styles.bar,
-                  { height: `${Math.max(3, (month.expense / maxAmount) * 100)}%`, backgroundColor: colors.negative },
-                ]}
-              />
-            </View>
             <Text style={[styles.monthLabel, { color: colors.muted }]}>{month.label}</Text>
           </View>
         ))}
       </View>
-      <View style={[styles.chartBaseline, { backgroundColor: colors.border }]} />
       <View style={styles.summaryRow}>
         <Text style={[styles.summaryValue, { color: colors.positive }]}>
           {formatCurrency(months[5]?.income ?? 0, currency)}
@@ -122,12 +179,13 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 11, fontWeight: '600' },
-  chart: { flexDirection: 'row', height: 138, paddingTop: 8 },
-  monthColumn: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
-  bars: { width: '72%', height: 108, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 4 },
-  bar: { width: 10, maxHeight: '100%', minHeight: 3, borderTopLeftRadius: 5, borderTopRightRadius: 5 },
-  monthLabel: { fontSize: 10, marginTop: 7, textTransform: 'capitalize' },
-  chartBaseline: { height: StyleSheet.hairlineWidth, marginTop: -4 },
+  chartPlot: { height: 108, position: 'relative', marginTop: 3 },
+  chartGridLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth },
+  chartSegment: { position: 'absolute', height: 2, borderRadius: 2 },
+  chartDot: { position: 'absolute', width: 8, height: 8, borderRadius: 4, borderWidth: 2 },
+  chartLabels: { flexDirection: 'row', marginTop: 7 },
+  monthColumn: { flex: 1, alignItems: 'center' },
+  monthLabel: { fontSize: 10, textTransform: 'capitalize' },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 12 },
   summaryValue: { fontSize: 12, fontWeight: '700' },
   emptyChart: { fontSize: 13, paddingBottom: 4 },

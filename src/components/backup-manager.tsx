@@ -27,8 +27,8 @@ export function BackupManager({
     try {
       await shareBackup(database);
       Alert.alert(
-        'File siap dibagikan',
-        'Pilih WhatsApp, Bluetooth, email, atau aplikasi lain pada menu berbagi. Penerima perlu mengimpor file tersebut di aplikasinya.'
+        'CSV siap dibagikan',
+        'Pilih WhatsApp, Bluetooth, email, atau aplikasi spreadsheet pada menu berbagi. Penerima dapat mengimpor file CSV ini di aplikasinya.'
       );
       await onComplete();
     } catch (error) {
@@ -99,7 +99,7 @@ export function BackupManager({
           {mode === 'sync' ? 'Bertukar data dengan pasangan' : 'Backup & restore'}
         </Text>
         <Text style={[styles.body, { color: colors.muted }]}>
-          Ekspor membuat file JSON lokal. Impor menggabungkan catatan baru tanpa menghapus isi perangkat; jika ada perubahan pada catatan yang sama, Anda memilih salinan yang dipakai.
+          Ekspor dan impor memakai file CSV yang dapat dibuka di aplikasi spreadsheet. ID perangkat pada file dipakai untuk mencocokkan sumber; impor menggabungkan catatan tanpa menghapus data lokal.
         </Text>
         <View style={styles.actions}>
           <View style={styles.button}>
@@ -111,7 +111,7 @@ export function BackupManager({
           </View>
           <View style={styles.button}>
             <ActionButton
-              title={working ? 'Memproses...' : '⇩ Impor file JSON'}
+              title={working ? 'Memproses...' : '⇩ Impor file CSV'}
               variant="secondary"
               onPress={() => void importFile()}
               disabled={working}
